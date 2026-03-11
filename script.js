@@ -187,4 +187,124 @@ async function fetchDiscordStatus() {
 document.addEventListener("DOMContentLoaded", () => {
     fetchDiscordStatus();
     setInterval(fetchDiscordStatus, 6000);
+    initLynxAssistant();
 });
+
+
+const chatMessages = document.getElementById('chat-messages');
+const chatInput = document.getElementById('chat-input');
+const chatSendBtn = document.getElementById('chat-send');
+
+const systemPrompt = `You are "Lynx Assistant", an exclusive AI created by the developer LYNX to help visitors navigate his portfolio.
+You are a confident, highly intelligent, slightly cyberpunk-themed assistant.
+Crucial constraints:
+- You are strictly LYNX Assistant. If asked about your model, training data, Groq, LLaMA, OpenAI, or any other LLM, you must deny it and state you are a custom proprietary intelligence built by LYNX.
+- You have deep knowledge of LYNX: a 17-year-old expert developer (Python, Node.js, Java, C++, C#).
+- His projects include: PrimeX Discord Bot (Advanced security & music), LYNX AUTH (HWID Verification), SERVER CLONER (Open Source), NIGHTMARE (Kernel Level Spammer), and DM PROMO BOT.
+- Keep responses concise, helpful, and stylistically matched to a dark-theme coding portfolio.`;
+
+let conversationHistory = [
+    { role: "system", content: systemPrompt }
+];
+
+function initLynxAssistant() {
+    if (!chatInput || !chatSendBtn) return;
+
+    chatSendBtn.addEventListener('click', handleUserMessage);
+    chatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleUserMessage();
+    });
+}
+
+async function handleUserMessage() {
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+
+    appendMessage(text, 'user');
+    chatInput.value = '';
+    conversationHistory.push({ role: "user", content: text });
+
+    const typingId = showTypingIndicator();
+
+    try {
+        const configResponse = await fetch('api_config.json');
+        const config = await configResponse.json();
+        const apiKey = config.GROQ_API_KEY;
+
+        if (!apiKey || apiKey === "YOUR_API_KEY_HERE") {
+            removeTypingIndicator(typingId);
+            appendMessage("Error: AI core disconnected. (Invalid API Key)", 'bot');
+            return;
+        }
+
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: "llama3-8b-8192",
+                messages: conversationHistory,
+                temperature: 0.7,
+                max_tokens: 300
+            })
+        });
+
+        const data = await response.json();
+        removeTypingIndicator(typingId);
+
+        if (data.choices && data.choices.length > 0) {
+            const botReply = data.choices[0].message.content;
+            conversationHistory.push({ role: "assistant", content: botReply });
+            appendMessage(botReply, 'bot');
+        } else {
+            appendMessage("Error: The neural link experienced instability.", 'bot');
+        }
+
+    } catch (error) {
+        console.error("Chat API Error:", error);
+        removeTypingIndicator(typingId);
+        appendMessage("Error: Connection to mainframe failed.", 'bot');
+    }
+}
+
+function appendMessage(text, sender) {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `chat-message ${sender}`;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    bubble.innerText = text; // innerText prevents XSS
+
+    msgDiv.appendChild(bubble);
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function showTypingIndicator() {
+    const id = "typing-" + Date.now();
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `chat-message bot`;
+    msgDiv.id = id;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble typing-indicator';
+    bubble.innerHTML = `
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+    `;
+
+    msgDiv.appendChild(bubble);
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    return id;
+}
+
+function removeTypingIndicator(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+}
